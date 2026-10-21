@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+*/node_modules/
+.pnpm-store/
+
+# Production Builds
+dist/
+build/
+
+# Environment Files & Secret Credentials (Never commit API keys or env files)
+*.env
+*.env.*
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+**/.env
+**/.env.*
+supabase/.env
+supabase/.env.*
+supabase/functions/.env
+supabase/functions/.env.*
+frontend/.env
+frontend/.env.*
+
+# Allow example environment files
+!.env.example
+!**/.env.example
+
+# Supabase Local Data & Internal Logs
+supabase/.branches/
+supabase/.temp/
+.temp/
+.tmp/
+
+# OS & Editor Files
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
