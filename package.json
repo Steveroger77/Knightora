@@ -1,0 +1,20 @@
+{
+  "name": "knightora",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The Cinematographer's Screenplay & Story Universe Studio",
+  "scripts": {
+    "build": "npm --prefix frontend install && npm --prefix frontend run build",
+    "dev": "npm --prefix frontend run dev",
+    "lint": "npm --prefix frontend run lint"
+  },
+  "keywords": [
+    "screenwriting",
+    "story-bible",
+    "screenplay-editor",
+    "ai-writing",
+    "film-studio"
+  ],
+  "author": "Steveroger77",
+  "license": "MIT"
+}

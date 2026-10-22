@@ -33,6 +33,7 @@
 - [⌨️ Director's Keyboard Shortcuts](#️-directors-keyboard-shortcuts)
 - [🏗️ Project Architecture & Tech Stack](#️-project-architecture--tech-stack)
 - [🔧 Configuration & Environment Variables](#-configuration--environment-variables)
+- [🌐 Deploy to Render (Free & Fast)](#-deploy-to-render-free--fast)
 - [🤝 Contributing & License](#-contributing--license)
 
 ---
@@ -295,6 +296,46 @@ VITE_GEMINI_API_KEY=your-gemini-api-key
 ```
 
 > **Note on Offline Mode**: If `VITE_SUPABASE_URL` is omitted, blank, or unreachable, Knightora automatically detects this and switches seamlessly to **Offline Local Storage Mode** without throwing any network errors.
+
+---
+
+## 🌐 Deploy to Render (Free & Fast)
+
+Knightora can be deployed to [Render](https://render.com) in less than 2 minutes as a **Static Site** (100% Free with Global CDN and automatic SSL).
+
+### Option A: 1-Click Blueprint (Recommended)
+Because Knightora includes a pre-configured [`render.yaml`](render.yaml) file:
+1. Log in to your [Render Dashboard](https://dashboard.render.com/).
+2. Click **New +** and select **Blueprint**.
+3. Connect your GitHub repository: `Steveroger77/Knightora`.
+4. Render will automatically read `render.yaml` and configure:
+   - Root Directory: `frontend`
+   - Build Command: `npm install && npm run build`
+   - Publish Directory: `dist`
+   - Client-side SPA routing rewrite rule (`/*` → `/index.html`)
+5. Click **Apply**. Your app will build and go live at `https://knightora.onrender.com`!
+
+### Option B: Manual Static Site Setup
+If you prefer setting it up manually:
+1. Go to [Render Dashboard](https://dashboard.render.com/) and click **New +** → **Static Site**.
+2. Connect your `Knightora` repository.
+3. Configure the following settings:
+   - **Name**: `knightora` (or your preferred name)
+   - **Branch**: `main`
+   - **Root Directory**: `frontend`
+   - **Build Command**: `npm install && npm run build`
+   - **Publish Directory**: `dist`
+4. Add the SPA redirect rule (critical for browser refresh):
+   - Under the **Redirects / Rewrites** tab:
+     - **Type**: `Rewrite`
+     - **Source Path**: `/*`
+     - **Destination**: `/index.html`
+5. (Optional) Add your environment variables in the **Environment** tab:
+   - `VITE_SUPABASE_URL` (optional)
+   - `VITE_SUPABASE_ANON_KEY` (optional)
+   - `VITE_OPENROUTER_API_KEY` (optional)
+   - `VITE_GEMINI_API_KEY` (optional)
+6. Click **Create Static Site**.
 
 ---
 
