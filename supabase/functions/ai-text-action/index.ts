@@ -14,11 +14,14 @@ serve(async (req) => {
     const { scriptId, selectedText, surroundingContext, action, tone } = await req.json();
 
     const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
+    const openRouterKey =
+      Deno.env.get("OPENROUTER_API_KEY") ||
+      Deno.env.get("VITE_OPENROUTER_API_KEY") ||
+      "";
 
     let modifiedText = "";
 
-    if (geminiApiKey) {
-      const prompt = `You are Knightora's expert screenplay and literary editor assistant.
+    const prompt = `You are Knightora's expert screenplay and literary editor assistant.
       
 Task Action: ${action} ${tone ? `(Desired Tone: ${tone})` : ""}
 Selected Story Text: "${selectedText}"
@@ -29,27 +32,62 @@ CRITICAL INSTRUCTIONS:
 - Do NOT include any prefixes, labels, intros, or titles like "Make More Cinematic Edit:", "Here is the text:", "Revised version:", or "[Action Applied]:".
 - Return ONLY the exact replacement text block. Zero meta-commentary.`;
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
-          }),
-        }
-      );
+    if (geminiApiKey) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
+            }),
+          }
+        );
 
-      const data = await response.json();
-      let rawOutput = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-      
-      // Clean any accidental intros or quotes
-      modifiedText = rawOutput
-        .replace(/^```[a-z]*\n?/i, '')
-        .replace(/\n?```$/i, '')
-        .replace(/^(here is|revised|edited|make more [a-z]+ edit|\[.*?\]):?\s*/i, '')
-        .trim();
+        const data = await response.json();
+        let rawOutput = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+        
+        modifiedText = rawOutput
+          .replace(/^```[a-z]*\n?/i, '')
+          .replace(/\n?```$/i, '')
+          .replace(/^(here is|revised|edited|make more [a-z]+ edit|\[.*?\]):?\s*/i, '')
+          .trim();
+      } catch (_) {}
+    } else if (openRouterKey) {
+      try {
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${openRouterKey.trim()}`,
+            "HTTP-Referer": "https://knightora.app",
+            "X-Title": "Knightora",
+          },
+          body: JSON.stringify({
+            model: "nvidia/nemotron-3-ultra-550b-a55b:free",
+            messages: [
+              {
+                role: "system",
+                content: "You are Knightora's expert screenplay and literary editor assistant. Return ONLY the edited replacement text without commentary or prefixes.",
+              },
+              { role: "user", content: prompt },
+            ],
+            temperature: 0.7,
+            max_tokens: 1024,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          let rawOutput = data?.choices?.[0]?.message?.content?.trim() || "";
+          modifiedText = rawOutput
+            .replace(/^```[a-z]*\n?/i, '')
+            .replace(/\n?```$/i, '')
+            .replace(/^(here is|revised|edited|make more [a-z]+ edit|\[.*?\]):?\s*/i, '')
+            .trim();
+        }
+      } catch (_) {}
     }
 
     // Clean Fallback if API key missing or call empty

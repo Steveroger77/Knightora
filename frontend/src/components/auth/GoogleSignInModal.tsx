@@ -20,7 +20,7 @@ export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({ isOpen, on
   useEffect(() => {
     if (!isOpen) return;
     try {
-      const raw = localStorage.getItem('obsidian_atelier_registered_users');
+      const raw = localStorage.getItem('knightora_registered_users') || localStorage.getItem('obsidian_atelier_registered_users');
       if (raw) {
         const users = JSON.parse(raw);
         if (Array.isArray(users)) {

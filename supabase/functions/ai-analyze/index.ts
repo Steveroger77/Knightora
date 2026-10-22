@@ -15,11 +15,14 @@ serve(async (req) => {
     // analysisType: Pacing | Theme | Emotional Arc | Dialogue Quality | Readability | Estimated Runtime | Genre Detection
 
     const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
+    const openRouterKey =
+      Deno.env.get("OPENROUTER_API_KEY") ||
+      Deno.env.get("VITE_OPENROUTER_API_KEY") ||
+      "";
 
     let report = "";
 
-    if (geminiApiKey) {
-      const prompt = `You are a Hollywood script reader and literary analyst for Knightora.
+    const prompt = `You are a Hollywood script reader and literary analyst for Knightora.
 Perform a detailed analysis of type "${analysisType}" on the following script:
 
 Script Text:
@@ -27,6 +30,7 @@ ${scriptText}
 
 Provide structured analysis including key strengths, areas for improvement, and actionable scene recommendations.`;
 
+    if (geminiApiKey) {
       try {
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
@@ -38,6 +42,34 @@ Provide structured analysis including key strengths, areas for improvement, and 
         );
         const data = await res.json();
         report = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+      } catch (_) {}
+    } else if (openRouterKey) {
+      try {
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${openRouterKey.trim()}`,
+            "HTTP-Referer": "https://knightora.app",
+            "X-Title": "Knightora",
+          },
+          body: JSON.stringify({
+            model: "nvidia/nemotron-3-ultra-550b-a55b:free",
+            messages: [
+              {
+                role: "system",
+                content: "You are a Hollywood script reader and literary analyst for Knightora. Provide structured analysis with strengths, areas for improvement, and actionable scene recommendations.",
+              },
+              { role: "user", content: prompt },
+            ],
+            temperature: 0.7,
+            max_tokens: 1024,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          report = data?.choices?.[0]?.message?.content?.trim() || "";
+        }
       } catch (_) {}
     }
 

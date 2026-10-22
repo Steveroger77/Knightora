@@ -17,6 +17,34 @@ DECLARE
     scene2_id UUID := '77777777-7777-7777-7777-777777777772';
     scene3_id UUID := '77777777-7777-7777-7777-777777777773';
 BEGIN
+    -- 0. Ensure Demo User Exists in auth.users for FK Constraints
+    INSERT INTO auth.users (
+        id,
+        instance_id,
+        aud,
+        role,
+        email,
+        encrypted_password,
+        email_confirmed_at,
+        created_at,
+        updated_at,
+        raw_app_meta_data,
+        raw_user_meta_data
+    )
+    VALUES (
+        demo_user_id,
+        '00000000-0000-0000-0000-000000000000',
+        'authenticated',
+        'authenticated',
+        'demo@knightora.app',
+        '$2a$10$abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqr',
+        NOW(),
+        NOW(),
+        NOW(),
+        '{"provider":"email","providers":["email"]}',
+        '{"displayName":"Venetian Author","username":"knightora_demo"}'
+    ) ON CONFLICT (id) DO NOTHING;
+
     -- 1. Create Demo Project
     INSERT INTO public.projects (id, user_id, title, description, cover_image_url)
     VALUES (

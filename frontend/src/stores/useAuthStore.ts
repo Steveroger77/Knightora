@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { User, AuthMethod } from '../types';
 import { useProjectStore } from './useProjectStore';
-import { supabase, signInWithGoogleOAuth } from '../lib/supabase';
+import { supabase, signInWithGoogleOAuth, isSupabaseOnline } from '../lib/supabase';
 
 const SESSION_KEY = 'knightora_session';
 const USERS_DB_KEY = 'knightora_registered_users';
@@ -81,49 +81,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   initializeAuth: async () => {
     try {
-      // 1. Check current Supabase active session (handles OAuth redirect back)
-      const { data } = await supabase.auth.getSession();
-      if (data?.session?.user) {
-        const sbUser = data.session.user;
-        const authUser: User = {
-          id: sbUser.id,
-          email: sbUser.email || '',
-          username: sbUser.user_metadata?.username || `author_${sbUser.id.slice(0, 5)}`,
-          displayName: sbUser.user_metadata?.displayName || sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || 'Google Author',
-          avatarUrl: sbUser.user_metadata?.avatar_url || sbUser.user_metadata?.picture || undefined,
-          createdAt: sbUser.created_at || new Date().toISOString(),
-          authMethod: 'google',
-          isGuest: false,
-          rememberMe: true,
-        };
-        saveRegisteredUser(authUser);
-        localStorage.setItem(SESSION_KEY, JSON.stringify({ user: authUser, rememberMe: true }));
-        set({ currentUser: authUser, isAuthenticated: true });
-
-        // Clean up hash/code query parameters from URL after OAuth redirect
-        if (window.location.hash || window.location.search) {
-          window.history.replaceState(null, '', window.location.pathname);
-        }
-        return;
-      }
-
-      // 2. Check local session fallback
-      const rawSession = localStorage.getItem(SESSION_KEY);
-      if (rawSession) {
-        const sessionData = JSON.parse(rawSession);
-        if (sessionData && sessionData.user) {
-          set({
-            currentUser: sessionData.user,
-            isAuthenticated: true,
-            rememberMe: sessionData.rememberMe ?? true,
-          });
-        }
-      }
-
-      // 3. Listen to Supabase Auth State Changes (Google OAuth & Session Refresh)
-      supabase.auth.onAuthStateChange((event, session) => {
-        if (session?.user) {
-          const sbUser = session.user;
+      if (isSupabaseOnline()) {
+        // 1. Check current Supabase active session (handles OAuth redirect back)
+        const { data } = await supabase.auth.getSession();
+        if (data?.session?.user) {
+          const sbUser = data.session.user;
           const authUser: User = {
             id: sbUser.id,
             email: sbUser.email || '',
@@ -138,13 +100,53 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           saveRegisteredUser(authUser);
           localStorage.setItem(SESSION_KEY, JSON.stringify({ user: authUser, rememberMe: true }));
           set({ currentUser: authUser, isAuthenticated: true });
+
+          // Clean up hash/code query parameters from URL after OAuth redirect
           if (window.location.hash || window.location.search) {
             window.history.replaceState(null, '', window.location.pathname);
           }
-        } else if (event === 'SIGNED_OUT') {
-          set({ currentUser: null, isAuthenticated: false });
+          return;
         }
-      });
+
+        // 2. Listen to Supabase Auth State Changes (Google OAuth & Session Refresh)
+        supabase.auth.onAuthStateChange((event, session) => {
+          if (session?.user) {
+            const sbUser = session.user;
+            const authUser: User = {
+              id: sbUser.id,
+              email: sbUser.email || '',
+              username: sbUser.user_metadata?.username || `author_${sbUser.id.slice(0, 5)}`,
+              displayName: sbUser.user_metadata?.displayName || sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || 'Google Author',
+              avatarUrl: sbUser.user_metadata?.avatar_url || sbUser.user_metadata?.picture || undefined,
+              createdAt: sbUser.created_at || new Date().toISOString(),
+              authMethod: 'google',
+              isGuest: false,
+              rememberMe: true,
+            };
+            saveRegisteredUser(authUser);
+            localStorage.setItem(SESSION_KEY, JSON.stringify({ user: authUser, rememberMe: true }));
+            set({ currentUser: authUser, isAuthenticated: true });
+            if (window.location.hash || window.location.search) {
+              window.history.replaceState(null, '', window.location.pathname);
+            }
+          } else if (event === 'SIGNED_OUT') {
+            set({ currentUser: null, isAuthenticated: false });
+          }
+        });
+      }
+
+      // Local session fallback
+      const rawSession = localStorage.getItem(SESSION_KEY);
+      if (rawSession) {
+        const sessionData = JSON.parse(rawSession);
+        if (sessionData && sessionData.user) {
+          set({
+            currentUser: sessionData.user,
+            isAuthenticated: true,
+            rememberMe: sessionData.rememberMe ?? true,
+          });
+        }
+      }
     } catch (err) {
       console.warn('Failed to load session:', err);
     }
@@ -155,9 +157,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     accountDetails?: { email?: string; displayName?: string; avatarUrl?: string }
   ) => {
     try {
-      // Trigger Real Supabase Google OAuth if a valid, non-placeholder Supabase URL is set
-      const sbUrl = import.meta.env.VITE_SUPABASE_URL || '';
-      if (sbUrl && !sbUrl.includes('your-project') && !sbUrl.includes('placeholder')) {
+      if (isSupabaseOnline()) {
         await signInWithGoogleOAuth();
         return { success: true, isNewUser: true };
       }

@@ -15,11 +15,14 @@ serve(async (req) => {
     // brainstormType: Plot Twists | Alternative Endings | Character Ideas | Dialogue Ideas | Fight Scenes | Mysteries | World Building | Story Hooks
 
     const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
+    const openRouterKey =
+      Deno.env.get("OPENROUTER_API_KEY") ||
+      Deno.env.get("VITE_OPENROUTER_API_KEY") ||
+      "";
 
     let ideas = [];
 
-    if (geminiApiKey) {
-      const prompt = `You are a creative brainstorming engine for Knightora.
+    const prompt = `You are a creative brainstorming engine for Knightora.
 Brainstorm 3 creative, high-concept ideas of category "${brainstormType}" based on this story context:
 
 Context: ${context || "Gothic Venetian alchemical thriller with mechanical memory automata"}
@@ -27,6 +30,7 @@ Context: ${context || "Gothic Venetian alchemical thriller with mechanical memor
 Return JSON array of strings:
 ["Idea 1...", "Idea 2...", "Idea 3..."]`;
 
+    if (geminiApiKey) {
       try {
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
@@ -43,6 +47,38 @@ Return JSON array of strings:
         const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (rawText) {
           ideas = JSON.parse(rawText);
+        }
+      } catch (_) {}
+    } else if (openRouterKey) {
+      try {
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${openRouterKey.trim()}`,
+            "HTTP-Referer": "https://knightora.app",
+            "X-Title": "Knightora",
+          },
+          body: JSON.stringify({
+            model: "nvidia/nemotron-3-ultra-550b-a55b:free",
+            messages: [
+              {
+                role: "system",
+                content: "You are a creative brainstorming engine for Knightora. Return strictly a JSON array of 3 string ideas.",
+              },
+              { role: "user", content: prompt },
+            ],
+            temperature: 0.8,
+            max_tokens: 512,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const rawText = data?.choices?.[0]?.message?.content?.trim();
+          if (rawText) {
+            const cleaned = rawText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
+            ideas = JSON.parse(cleaned);
+          }
         }
       } catch (_) {}
     }
