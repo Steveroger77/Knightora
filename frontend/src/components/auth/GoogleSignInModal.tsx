@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { GlassSurface } from '../ui/GlassSurface';
-import { X, ArrowRight, UserCheck, Sparkles, Mail, User } from 'lucide-react';
+import { X, ArrowRight, Mail, User, Check } from 'lucide-react';
 
 interface GoogleSignInModalProps {
   isOpen: boolean;
@@ -11,26 +11,27 @@ interface GoogleSignInModalProps {
 
 export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({ isOpen, onClose, rememberMe }) => {
   const { loginWithGoogle } = useAuthStore();
-  const [customEmail, setCustomEmail] = useState('');
-  const [customName, setCustomName] = useState('');
+  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [localRemember, setLocalRemember] = useState(rememberMe);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [savedGoogleUsers, setSavedGoogleUsers] = useState<any[]>([]);
+  const [savedAccount, setSavedAccount] = useState<{ email: string; displayName: string } | null>(null);
+  const [showAccountInput, setShowAccountInput] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     try {
-      const raw = localStorage.getItem('knightora_registered_users') || localStorage.getItem('obsidian_atelier_registered_users');
+      const raw = localStorage.getItem('knightora_last_google_account');
       if (raw) {
-        const users = JSON.parse(raw);
-        if (Array.isArray(users)) {
-          const gUsers = users.filter((u) => u.authMethod === 'google');
-          setSavedGoogleUsers(gUsers.slice(-3).reverse());
+        const parsed = JSON.parse(raw);
+        if (parsed?.email) {
+          setSavedAccount(parsed);
+          setEmail(parsed.email);
+          setDisplayName(parsed.displayName || '');
         }
       }
-    } catch (e) {
-      // ignore
-    }
+    } catch (_) {}
   }, [isOpen]);
 
   useEffect(() => {
@@ -45,12 +46,20 @@ export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({ isOpen, on
 
   if (!isOpen) return null;
 
-  const handleSignIn = async (accountDetails?: { email: string; displayName: string }) => {
+  const handleSignIn = async (accountDetails: { email: string; displayName: string }) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await loginWithGoogle(rememberMe, accountDetails);
+      const res = await loginWithGoogle(localRemember, accountDetails);
       if (res.success) {
+        if (localRemember) {
+          localStorage.setItem('knightora_last_google_account', JSON.stringify({
+            email: accountDetails.email,
+            displayName: accountDetails.displayName,
+          }));
+        } else {
+          localStorage.removeItem('knightora_last_google_account');
+        }
         onClose();
       } else if (res.error) {
         setError(res.error);
@@ -62,24 +71,24 @@ export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({ isOpen, on
     }
   };
 
-  const handleCustomSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customEmail.trim() || !customEmail.includes('@')) {
-      setError('Please enter a valid Google email address.');
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setError('Please enter a valid Google or Gmail address.');
       return;
     }
-    const displayName = customName.trim() || customEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-    handleSignIn({ email: customEmail.trim(), displayName });
+    const cleanName = displayName.trim() || cleanEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    handleSignIn({ email: cleanEmail, displayName: cleanName });
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-obsidian-950/80 backdrop-blur-md select-none animate-in fade-in duration-200">
-      <div className="relative w-full max-w-[380px]">
+      <div className="relative w-full max-w-[370px]">
         <GlassSurface
           borderRadius={24}
           borderWidth={1}
           blur={18}
-          brightness={50}
           opacity={0.95}
           className="p-6 shadow-2xl border-aurora-500/30 text-white relative"
         >
@@ -118,7 +127,7 @@ export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({ isOpen, on
               Sign in with Google
             </h2>
             <p className="text-[11px] text-slate-300 mt-0.5">
-              Choose an account to continue to <span className="text-aurora-300 font-semibold">Knightora Studio</span>
+              Access your personal workspace on <span className="text-aurora-300 font-semibold">Knightora Studio</span>
             </p>
           </div>
 
@@ -128,101 +137,110 @@ export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({ isOpen, on
             </div>
           )}
 
-          {/* 1. Saved Accounts list if available */}
-          {savedGoogleUsers.length > 0 && (
-            <div className="mb-4 space-y-1.5">
+          {/* Quick 1-Click Resume if this specific browser previously remembered an account */}
+          {savedAccount && !showAccountInput && (
+            <div className="mb-4 space-y-2">
               <p className="text-[10px] uppercase font-mono tracking-wider text-slate-400 px-1">
-                Recent Google Accounts
+                Saved on this device
               </p>
-              {savedGoogleUsers.map((u) => (
-                <button
-                  key={u.id}
-                  onClick={() => handleSignIn({ email: u.email, displayName: u.displayName })}
-                  disabled={loading}
-                  className="w-full flex items-center justify-between p-2.5 rounded-xl bg-obsidian-900/80 hover:bg-aurora-500/20 border border-aurora-500/25 transition-all text-left group cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-emerald-500 flex items-center justify-center text-white font-bold text-xs flex-shrink-0 shadow-sm">
-                      {u.displayName?.charAt(0).toUpperCase() || 'G'}
+              <button
+                onClick={() => handleSignIn(savedAccount)}
+                disabled={loading}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-obsidian-900/90 hover:bg-aurora-500/20 border border-aurora-500/30 transition-all text-left group cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-emerald-500 flex items-center justify-center text-white font-bold text-xs flex-shrink-0 shadow-sm">
+                    {savedAccount.displayName?.charAt(0).toUpperCase() || 'G'}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-white group-hover:text-aurora-300 transition-colors truncate">
+                      {savedAccount.displayName}
                     </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold text-white group-hover:text-aurora-300 transition-colors truncate">
-                        {u.displayName}
-                      </div>
-                      <div className="text-[10px] text-slate-400 truncate">
-                        {u.email}
-                      </div>
+                    <div className="text-[10px] text-slate-400 truncate">
+                      {savedAccount.email}
                     </div>
                   </div>
-                  <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-aurora-300 transition-colors flex-shrink-0" />
-                </button>
-              ))}
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-aurora-300 transition-colors flex-shrink-0" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowAccountInput(true)}
+                className="w-full text-center text-[11px] text-aurora-400 hover:underline cursor-pointer pt-1 outline-none"
+              >
+                Use a different Google account
+              </button>
             </div>
           )}
 
-          {/* 2. One-Click Instant Sign-In Option */}
-          <div className="mb-4">
-            <button
-              onClick={() => handleSignIn()}
-              disabled={loading}
-              className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-semibold text-xs flex items-center justify-center gap-2.5 shadow-glow-sm hover:scale-[1.01] transition-all cursor-pointer border border-white/60 outline-none"
-            >
-              <Sparkles className="w-4 h-4 text-blue-600" />
-              <span>Continue as Google Creator (1-Click)</span>
-            </button>
-          </div>
-
-          {/* Minimal Divider */}
-          <div className="relative flex items-center justify-center my-4">
-            <div className="w-full border-t border-aurora-500/20" />
-            <span className="bg-obsidian-950 px-2 text-[9px] uppercase tracking-wider text-slate-400 font-mono absolute">
-              or use your own email
-            </span>
-          </div>
-
-          {/* 3. Custom Google Email / Personal Account Form */}
-          <form onSubmit={handleCustomSubmit} className="space-y-2.5">
-            <div>
-              <div className="relative">
-                <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-                <input
-                  type="email"
-                  required
-                  value={customEmail}
-                  onChange={(e) => setCustomEmail(e.target.value)}
-                  placeholder="Enter your Google/Gmail address"
-                  className="w-full bg-obsidian-950/90 border border-aurora-500/30 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-aurora-400"
-                />
+          {/* Account Form for new visitor or when choosing different account */}
+          {(!savedAccount || showAccountInput) && (
+            <form onSubmit={handleFormSubmit} className="space-y-3">
+              <div>
+                <div className="relative">
+                  <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Your Google / Gmail address"
+                    className="w-full bg-obsidian-950/90 border border-aurora-500/30 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-aurora-400"
+                  />
+                </div>
               </div>
-            </div>
 
-            <div>
-              <div className="relative">
-                <User className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  value={customName}
-                  onChange={(e) => setCustomName(e.target.value)}
-                  placeholder="Your Name (optional)"
-                  className="w-full bg-obsidian-950/90 border border-aurora-500/30 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-aurora-400"
-                />
+              <div>
+                <div className="relative">
+                  <User className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="Your Name (optional)"
+                    className="w-full bg-obsidian-950/90 border border-aurora-500/30 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-aurora-400"
+                  />
+                </div>
               </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-500 via-indigo-500 to-teal-500 hover:from-blue-400 hover:to-teal-400 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-glow-sm cursor-pointer transition-all mt-1"
-            >
-              <span>{loading ? 'Authenticating...' : 'Sign in with this Google Account'}</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </form>
+              <div className="flex items-center justify-between text-[11px] text-slate-300 pt-0.5">
+                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={localRemember}
+                    onChange={(e) => setLocalRemember(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded border-aurora-500/30 bg-obsidian-950 text-aurora-500 outline-none"
+                  />
+                  <span>Remember my Google account</span>
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-500 via-indigo-500 to-teal-500 hover:from-blue-400 hover:to-teal-400 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-glow-sm cursor-pointer transition-all mt-2"
+              >
+                <span>{loading ? 'Signing in...' : 'Sign in to Personal Workspace'}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+
+              {savedAccount && showAccountInput && (
+                <button
+                  type="button"
+                  onClick={() => setShowAccountInput(false)}
+                  className="w-full text-center text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer pt-1 outline-none"
+                >
+                  Back to saved account
+                </button>
+              )}
+            </form>
+          )}
 
           {/* Footer note */}
           <div className="mt-4 pt-3 border-t border-aurora-500/15 text-center">
             <p className="text-[10px] text-slate-400">
-              Secured with Google OAuth profile protocol & local session state.
+              Only you can see and edit your stories, characters, and scripts.
             </p>
           </div>
         </GlassSurface>

@@ -7,7 +7,6 @@ export function isSupabaseOnline(): boolean {
     sbUrl &&
     sbKey &&
     !sbUrl.includes('placeholder') &&
-    !sbUrl.includes('eqgqqdgfpwejjgjysaws') &&
     !sbUrl.includes('your-supabase-project') &&
     !sbUrl.includes('your-project') &&
     !sbKey.includes('placeholder') &&

@@ -19,7 +19,7 @@ interface AuthState {
   pendingGoogleUser: User | null;
 
   // Actions
-  initializeAuth: () => void;
+  initializeAuth: () => Promise<void>;
   loginWithGoogle: (
     rememberMe?: boolean,
     accountDetails?: { email?: string; displayName?: string; avatarUrl?: string }
@@ -27,7 +27,7 @@ interface AuthState {
   completeGoogleOnboarding: (username?: string) => void;
   loginWithEmail: (identifier: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
   signUpWithEmail: (email: string, password: string, username: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
-  loginAsGuest: () => void;
+  loginAsGuest: () => Promise<void>;
   convertGuestAccount: (
     method: 'google' | 'email',
     details: { email?: string; password?: string; username?: string },
@@ -71,10 +71,49 @@ function checkEmailTaken(email: string, currentUserId?: string): boolean {
   return users.some((u) => u.email.toLowerCase() === email.toLowerCase() && u.id !== currentUserId);
 }
 
+function getStoredSession(): { user: User; rememberMe: boolean } | null {
+  try {
+    // Check sessionStorage first (active session tab)
+    const sessionRaw = sessionStorage.getItem(SESSION_KEY);
+    if (sessionRaw) {
+      const parsed = JSON.parse(sessionRaw);
+      if (parsed?.user) return parsed;
+    }
+
+    // Check localStorage (persisted session when rememberMe was true)
+    const localRaw = localStorage.getItem(SESSION_KEY);
+    if (localRaw) {
+      const parsed = JSON.parse(localRaw);
+      if (parsed?.user && parsed?.rememberMe) return parsed;
+    }
+  } catch (err) {
+    console.warn('[Session Read Error]:', err);
+  }
+  return null;
+}
+
+function saveSession(user: User, rememberMe: boolean) {
+  const payload = JSON.stringify({ user, rememberMe });
+  if (rememberMe) {
+    localStorage.setItem(SESSION_KEY, payload);
+    sessionStorage.removeItem(SESSION_KEY);
+  } else {
+    sessionStorage.setItem(SESSION_KEY, payload);
+    localStorage.removeItem(SESSION_KEY);
+  }
+}
+
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(SESSION_KEY);
+}
+
+const initialSession = getStoredSession();
+
 export const useAuthStore = create<AuthState>((set, get) => ({
-  currentUser: null,
-  isAuthenticated: false,
-  rememberMe: true,
+  currentUser: initialSession?.user || null,
+  isAuthenticated: !!initialSession?.user,
+  rememberMe: initialSession?.rememberMe ?? true,
   isProfileModalOpen: false,
   isUsernameOnboardingOpen: false,
   pendingGoogleUser: null,
@@ -98,8 +137,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             rememberMe: true,
           };
           saveRegisteredUser(authUser);
-          localStorage.setItem(SESSION_KEY, JSON.stringify({ user: authUser, rememberMe: true }));
+          saveSession(authUser, true);
           set({ currentUser: authUser, isAuthenticated: true });
+
+          // Load this specific user's isolated workspace
+          await useProjectStore.getState().loadUserWorkspace(authUser.id);
 
           // Clean up hash/code query parameters from URL after OAuth redirect
           if (window.location.hash || window.location.search) {
@@ -109,7 +151,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
 
         // 2. Listen to Supabase Auth State Changes (Google OAuth & Session Refresh)
-        supabase.auth.onAuthStateChange((event, session) => {
+        supabase.auth.onAuthStateChange(async (event, session) => {
           if (session?.user) {
             const sbUser = session.user;
             const authUser: User = {
@@ -124,31 +166,39 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               rememberMe: true,
             };
             saveRegisteredUser(authUser);
-            localStorage.setItem(SESSION_KEY, JSON.stringify({ user: authUser, rememberMe: true }));
+            saveSession(authUser, true);
             set({ currentUser: authUser, isAuthenticated: true });
+            await useProjectStore.getState().loadUserWorkspace(authUser.id);
             if (window.location.hash || window.location.search) {
               window.history.replaceState(null, '', window.location.pathname);
             }
           } else if (event === 'SIGNED_OUT') {
+            clearSession();
+            useProjectStore.getState().clearWorkspace();
             set({ currentUser: null, isAuthenticated: false });
           }
         });
       }
 
-      // Local session fallback
-      const rawSession = localStorage.getItem(SESSION_KEY);
-      if (rawSession) {
-        const sessionData = JSON.parse(rawSession);
-        if (sessionData && sessionData.user) {
-          set({
-            currentUser: sessionData.user,
-            isAuthenticated: true,
-            rememberMe: sessionData.rememberMe ?? true,
-          });
-        }
+      // Check stored session (only if rememberMe was true in localStorage, or active in sessionStorage)
+      const sessionData = getStoredSession();
+      if (sessionData && sessionData.user) {
+        set({
+          currentUser: sessionData.user,
+          isAuthenticated: true,
+          rememberMe: sessionData.rememberMe ?? true,
+        });
+        // Load this user's workspace
+        await useProjectStore.getState().loadUserWorkspace(sessionData.user.id);
+      } else {
+        // Fresh browser opening: start with clean unauthenticated state
+        set({ currentUser: null, isAuthenticated: false });
+        useProjectStore.getState().clearWorkspace();
       }
     } catch (err) {
       console.warn('Failed to load session:', err);
+      set({ currentUser: null, isAuthenticated: false });
+      useProjectStore.getState().clearWorkspace();
     }
   },
 
@@ -165,39 +215,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.warn('[Supabase OAuth Notice]:', err?.message || err);
     }
 
-    // Direct, 100% Reliable Google Authentication
-    const users = getRegisteredUsers();
-
-    let email = accountDetails?.email?.trim().toLowerCase();
-    let displayName = accountDetails?.displayName?.trim();
-
-    if (!email) {
-      const lastGoogleUser = users.filter((u) => u.authMethod === 'google').pop();
-      if (lastGoogleUser) {
-        email = lastGoogleUser.email;
-        displayName = displayName || lastGoogleUser.displayName;
-      } else {
-        email = `creator.google@gmail.com`;
-        displayName = displayName || 'Google Creator';
-      }
+    // Require an email address for Google sign in
+    const email = accountDetails?.email?.trim().toLowerCase();
+    if (!email || !email.includes('@')) {
+      return { success: false, error: 'Please enter a valid Google email address.' };
     }
 
+    let displayName = accountDetails?.displayName?.trim();
     if (!displayName) {
-      const localPart = email.split('@')[0] || 'google_user';
+      const localPart = email.split('@')[0] || 'Google Author';
       displayName = localPart
         .replace(/[._-]/g, ' ')
         .replace(/\b\w/g, (c) => c.toUpperCase());
     }
 
-    // Check if this Google account already exists in registered database
+    const users = getRegisteredUsers();
+
+    // Check if this Google account already exists
     let existing = users.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.authMethod === 'google'
+      (u) => u.email.toLowerCase() === email && u.authMethod === 'google'
     );
 
-    const userId = existing?.id || 'google_' + Math.random().toString(36).substr(2, 9);
+    // Stable, deterministic user ID tied directly to this user's Google email
+    const safeEmailKey = email.replace(/[^a-zA-Z0-9]/g, '_');
+    const userId = existing?.id || `usr_g_${safeEmailKey}`;
     const username = existing?.username || (email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_') || `author_${Math.floor(Math.random() * 9000) + 1000}`);
 
-    // Authentic Google avatar badge with user initials and Google brand colors
     const initial = displayName.charAt(0).toUpperCase() || 'G';
     const avatarSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><circle cx="48" cy="48" r="48" fill="%231E293B"/><circle cx="48" cy="48" r="44" stroke="%234285F4" stroke-width="4" fill="none"/><text x="50%" y="54%" font-family="system-ui, -apple-system, sans-serif" font-size="38" font-weight="700" fill="%2360A5FA" text-anchor="middle" dominant-baseline="middle">${initial}</text><circle cx="74" cy="74" r="16" fill="%2334A853"/><text x="74" y="77" font-family="system-ui, sans-serif" font-size="14" font-weight="bold" fill="%23FFFFFF" text-anchor="middle" dominant-baseline="middle">G</text></svg>`;
     const avatarUrl = accountDetails?.avatarUrl || existing?.avatarUrl || avatarSvg;
@@ -215,8 +258,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     };
 
     saveRegisteredUser(authUser);
-    const sessionData = { user: authUser, rememberMe };
-    if (rememberMe) localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+    saveSession(authUser, rememberMe);
 
     set({
       currentUser: authUser,
@@ -225,6 +267,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isUsernameOnboardingOpen: !existing,
       rememberMe,
     });
+
+    // Load this user's isolated workspace immediately
+    await useProjectStore.getState().loadUserWorkspace(userId);
 
     return { success: true, isNewUser: !existing };
   },
@@ -243,9 +288,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     const updatedUser: User = { ...pendingGoogleUser, username: finalUsername };
     saveRegisteredUser(updatedUser);
-
-    const sessionData = { user: updatedUser, rememberMe };
-    if (rememberMe) localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+    saveSession(updatedUser, rememberMe);
 
     set({
       currentUser: updatedUser,
@@ -286,11 +329,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       rememberMe,
     };
 
-    if (rememberMe) {
-      localStorage.setItem(SESSION_KEY, JSON.stringify({ user: sessionUser, rememberMe }));
-    }
-
+    saveSession(sessionUser, rememberMe);
     set({ currentUser: sessionUser, isAuthenticated: true, rememberMe });
+
+    // Load user's private workspace
+    await useProjectStore.getState().loadUserWorkspace(sessionUser.id);
     return { success: true };
   },
 
@@ -343,15 +386,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       rememberMe,
     };
 
-    if (rememberMe) {
-      localStorage.setItem(SESSION_KEY, JSON.stringify({ user: sessionUser, rememberMe }));
-    }
-
+    saveSession(sessionUser, rememberMe);
     set({ currentUser: sessionUser, isAuthenticated: true, rememberMe });
+
+    // Initialize fresh workspace for new email user
+    await useProjectStore.getState().loadUserWorkspace(sessionUser.id);
     return { success: true };
   },
 
-  loginAsGuest: () => {
+  loginAsGuest: async () => {
     const guestId = 'guest_' + Math.floor(Math.random() * 90000 + 10000);
     const guestUser: User = {
       id: guestId,
@@ -365,8 +408,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       rememberMe: true,
     };
 
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ user: guestUser, rememberMe: true }));
-    set({ currentUser: guestUser, isAuthenticated: true, rememberMe: true });
+    saveSession(guestUser, false);
+    set({ currentUser: guestUser, isAuthenticated: true, rememberMe: false });
+
+    await useProjectStore.getState().loadUserWorkspace(guestId);
   },
 
   convertGuestAccount: async (method, details, rememberMe = true) => {
@@ -378,12 +423,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     let newUser: RegisteredAccount;
 
     if (method === 'google') {
+      const email = (details.email || '').trim().toLowerCase();
+      if (!email || !email.includes('@')) {
+        return { success: false, error: 'Valid Google email is required.' };
+      }
+      const safeEmailKey = email.replace(/[^a-zA-Z0-9]/g, '_');
       newUser = {
-        id: 'usr_g_' + Math.random().toString(36).substr(2, 9),
-        email: details.email || `google_author_${Math.floor(Math.random() * 1000)}@gmail.com`,
-        username: details.username || `author_${Math.floor(Math.random() * 9000) + 1000}`,
+        id: `usr_g_${safeEmailKey}`,
+        email,
+        username: details.username || email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_'),
         displayName: 'Google Author',
-        avatarUrl: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80`,
+        avatarUrl: undefined,
         createdAt: new Date().toISOString(),
         authMethod: 'google',
         isGuest: false,
@@ -426,10 +476,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       };
     }
 
-    // Save registered user
     saveRegisteredUser(newUser);
 
-    // Automatic Data Migration: Migrate all guest projects to the new user ID
+    // Migrate guest projects to the new user ID
     const projectStore = useProjectStore.getState();
     const guestProjects = projectStore.projects.map((p) => {
       if (p.userId === currentUser.id) {
@@ -438,7 +487,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return p;
     });
 
-    useProjectStore.setState({ projects: guestProjects });
+    useProjectStore.setState({ projects: guestProjects, currentUserId: newUser.id });
 
     const sessionUser: User = {
       id: newUser.id,
@@ -452,10 +501,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       rememberMe,
     };
 
-    if (rememberMe) {
-      localStorage.setItem(SESSION_KEY, JSON.stringify({ user: sessionUser, rememberMe }));
-    }
-
+    saveSession(sessionUser, rememberMe);
     set({ currentUser: sessionUser, isAuthenticated: true, rememberMe });
     return { success: true };
   },
@@ -480,7 +526,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       currentUser.avatarUrl = data.avatarUrl;
     }
 
-    // If password provided and email user
     if (data.password && currentUser.authMethod === 'email') {
       const users = getRegisteredUsers();
       const idx = users.findIndex((u) => u.id === currentUser.id);
@@ -492,8 +537,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     const updatedUser = { ...currentUser };
     saveRegisteredUser(updatedUser);
-
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ user: updatedUser, rememberMe: get().rememberMe }));
+    saveSession(updatedUser, get().rememberMe);
     set({ currentUser: updatedUser });
 
     return { success: true };
@@ -515,7 +559,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
-    localStorage.removeItem(SESSION_KEY);
+    clearSession();
+    if (isSupabaseOnline()) {
+      try {
+        supabase.auth.signOut();
+      } catch (_) {}
+    }
+    useProjectStore.getState().clearWorkspace();
     set({
       currentUser: null,
       isAuthenticated: false,

@@ -33,18 +33,26 @@ export const ThreePanelLayout: React.FC = () => {
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     setIsDragging(true);
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    let rafId: number | null = null;
+
     const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const percentage = Math.min(80, Math.max(20, ((moveEvent.clientX - rect.left) / rect.width) * 100));
-      setSplitRatio(percentage);
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        const percentage = Math.min(80, Math.max(20, ((moveEvent.clientX - rect.left) / rect.width) * 100));
+        setSplitRatio(percentage);
+        rafId = null;
+      });
     };
     const handleMouseUp = () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
       setIsDragging(false);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
     window.addEventListener('mouseup', handleMouseUp);
   };
 

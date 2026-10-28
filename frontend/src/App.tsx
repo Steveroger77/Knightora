@@ -103,11 +103,11 @@ export const App: React.FC = () => {
 
   return (
     <div className={`h-full flex flex-col select-none overflow-hidden relative theme-${theme}`}>
-      {/* 4 Atmosphere Mood Background Layers */}
-      <div className="app-bg-layer bg-day" style={{ backgroundImage: 'url(/backgrounds/knight-day.png)' }} />
-      <div className="app-bg-layer bg-sunset" style={{ backgroundImage: 'url(/backgrounds/knight-sunset.png)' }} />
-      <div className="app-bg-layer bg-cloudy" style={{ backgroundImage: 'url(/backgrounds/knight-cloudy.png)' }} />
-      <div className="app-bg-layer bg-night" style={{ backgroundImage: 'url(/backgrounds/knight-night.png)' }} />
+      {/* 4 Instant WebP Atmosphere Mood Background Layers */}
+      <div className="app-bg-layer bg-day" />
+      <div className="app-bg-layer bg-sunset" />
+      <div className="app-bg-layer bg-cloudy" />
+      <div className="app-bg-layer bg-night" />
 
       <div className="relative z-20 px-4 pt-4 pb-0"><Header /></div>
 

@@ -3,6 +3,10 @@ import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import './index.css';
+import { initBackgroundPreloader } from './lib/imagePreloader';
+
+// Initialize background image preloader for instant zero-delay loading
+initBackgroundPreloader();
 
 const queryClient = new QueryClient({
   defaultOptions: {

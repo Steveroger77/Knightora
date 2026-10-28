@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { GlassSurface } from '../ui/GlassSurface';
-import { Shield, User, Mail, Lock, Check, AlertCircle, ArrowRight, KeyRound, UserCheck } from 'lucide-react';
+import { Shield, User, Mail, Lock, Check, AlertCircle, ArrowRight, UserCheck } from 'lucide-react';
 import { GoogleSignInModal } from './GoogleSignInModal';
+import { isSupabaseOnline } from '../../lib/supabase';
+
 
 export const LoginModal: React.FC = () => {
   const { loginWithGoogle, loginWithEmail, signUpWithEmail, loginAsGuest, resetPassword } = useAuthStore();
@@ -13,20 +15,36 @@ export const LoginModal: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
+  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
+
 
   const clearState = () => {
     setError(null);
     setSuccessMsg(null);
   };
 
-  const handleGoogleLogin = () => {
+  const handleGoogleLogin = async () => {
     clearState();
-    setIsGoogleModalOpen(true);
+    if (isSupabaseOnline()) {
+      setLoading(true);
+      try {
+        const res = await loginWithGoogle(rememberMe);
+        if (!res.success && res.error) {
+          setError(res.error);
+        }
+      } catch (err: any) {
+        setError(err?.message || 'Google sign-in failed.');
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // In standalone browser mode: open Google modal so user signs in with THEIR OWN Google account
+      setIsGoogleModalOpen(true);
+    }
   };
 
   const handleEmailSignIn = async (e: React.FormEvent) => {
@@ -96,10 +114,10 @@ export const LoginModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center md:justify-end p-4 md:pr-36 lg:pr-72 overflow-hidden select-none bg-obsidian-950">
-      {/* PURE UNBLURRED & UN-DARKENED KNIGHT LOGIN BACKGROUND IMAGE */}
+      {/* PURE UNBLURRED & UN-DARKENED KNIGHT LOGIN BACKGROUND IMAGE — INSTANT WEBP */}
       <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-all duration-700 pointer-events-none scale-100"
-        style={{ backgroundImage: 'url(/backgrounds/knight-login.png)' }}
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-500 pointer-events-none scale-100 transform-gpu"
+        style={{ backgroundImage: 'url(/backgrounds/knight-login.webp)' }}
       />
 
       {/* SMALL & MINIMAL LIQUID GLASS LOGIN CARD */}
@@ -327,7 +345,7 @@ export const LoginModal: React.FC = () => {
         </GlassSurface>
       </div>
 
-      {/* Dedicated Google Sign-In & Account Chooser Dialog */}
+      {/* Standalone Google Sign-in Modal */}
       <GoogleSignInModal
         isOpen={isGoogleModalOpen}
         onClose={() => setIsGoogleModalOpen(false)}

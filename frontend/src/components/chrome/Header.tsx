@@ -8,7 +8,7 @@ import { Shield, Search, Maximize2, Minimize2, HelpCircle, Plus, Sun, Sunset, Cl
 import { GlassSurface } from '../ui/GlassSurface';
 
 export const Header: React.FC = () => {
-  const { projects, activeProject, setActiveProject, deleteProject } = useProjectStore();
+  const { projects, activeProject, setActiveProject, deleteProject, loadSampleTutorialStory } = useProjectStore();
   const { isDistractionFree, toggleDistractionFree, setIsShortcutsOpen, setIsNewProjectModalOpen, setIsImportStoryModalOpen, setIsAIStorySummaryOpen, theme, setTheme, isSplitView, toggleSplitView } = useUIStore();
   const { setIsSearchOpen } = useAIStore();
   const { currentUser, setIsProfileModalOpen, logout } = useAuthStore();
@@ -116,8 +116,21 @@ export const Header: React.FC = () => {
                         ))}
                       </ul>
 
-                      {activeProject && (
-                        <div className="border-t border-aurora-500/15 mt-1.5 pt-1.5">
+                      <div className="border-t border-aurora-500/15 mt-1.5 pt-1.5 space-y-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            loadSampleTutorialStory();
+                            setIsProjectDropdownOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-aurora-300 hover:bg-aurora-500/20 border border-transparent hover:border-aurora-500/30 transition-all cursor-pointer font-medium"
+                          title="Restore or add the sample tutorial story (The Whispering Manor)"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-teal-400" />
+                          <span>Load Sample Story & Guide</span>
+                        </button>
+
+                        {activeProject && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -129,8 +142,8 @@ export const Header: React.FC = () => {
                             <Trash2 className="w-3.5 h-3.5" />
                             <span>Delete Current Story "{activeProject.title}"</span>
                           </button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </GlassSurface>
                 </div>

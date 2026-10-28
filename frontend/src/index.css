@@ -44,7 +44,7 @@
   }
 }
 
-/* ── App Background (4 Seamless Atmosphere Moods) ─────────────────────────── */
+/* ── App Background (4 Seamless Atmosphere Moods — Instant WebP + GPU Composited) ── */
 .app-bg-layer {
   position: fixed;
   inset: 0;
@@ -54,25 +54,40 @@
   background-repeat: no-repeat;
   width: 100vw;
   height: 100vh;
-  transition: opacity 0.8s var(--ease-expo), filter 0.8s var(--ease-expo);
-  filter: blur(2px) brightness(1);
-  will-change: opacity, filter;
+  transition: opacity 0.5s var(--ease-expo), visibility 0.5s;
+  will-change: opacity;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
   opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
-.app-bg-layer.bg-day { filter: blur(2px) brightness(0.95); }
-.app-bg-layer.bg-sunset { filter: blur(2px) brightness(0.9); }
-.app-bg-layer.bg-cloudy { filter: blur(2px) brightness(0.85); }
-.app-bg-layer.bg-night { filter: blur(2px) brightness(0.7); }
+.app-bg-layer.bg-day {
+  background-image: url(/backgrounds/knight-day.webp);
+  filter: blur(2px) brightness(0.95);
+}
+.app-bg-layer.bg-sunset {
+  background-image: url(/backgrounds/knight-sunset.webp);
+  filter: blur(2px) brightness(0.9);
+}
+.app-bg-layer.bg-cloudy {
+  background-image: url(/backgrounds/knight-cloudy.webp);
+  filter: blur(2px) brightness(0.85);
+}
+.app-bg-layer.bg-night {
+  background-image: url(/backgrounds/knight-night.webp);
+  filter: blur(2px) brightness(0.7);
+}
 
-.theme-day .app-bg-layer.bg-day { opacity: 1; }
-.theme-sunset .app-bg-layer.bg-sunset { opacity: 1; }
-.theme-cloudy .app-bg-layer.bg-cloudy { opacity: 1; }
-.theme-night .app-bg-layer.bg-night { opacity: 1; }
+.theme-day .app-bg-layer.bg-day { opacity: 1; visibility: visible; }
+.theme-sunset .app-bg-layer.bg-sunset { opacity: 1; visibility: visible; }
+.theme-cloudy .app-bg-layer.bg-cloudy { opacity: 1; visibility: visible; }
+.theme-night .app-bg-layer.bg-night { opacity: 1; visibility: visible; }
 
 /* Legacy Fallbacks */
-.theme-light .app-bg-layer.bg-day { opacity: 1; }
-.theme-dark .app-bg-layer.bg-night { opacity: 1; }
+.theme-light .app-bg-layer.bg-day { opacity: 1; visibility: visible; }
+.theme-dark .app-bg-layer.bg-night { opacity: 1; visibility: visible; }
 
 /* ── Scrollbars ─────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -212,9 +227,12 @@
   font-family: inherit; text-transform: uppercase; letter-spacing: 0.05em;
 }
 
-/* ── Global Transitions ─────────────────────── */
-*, *::before, *::after { transition-timing-function: var(--ease-expo); }
-button, a, [role="button"] { transition-duration: 0.3s; }
+/* ── Buttery Smooth GPU Transitions ─────────────────────── */
+button, a, [role="button"], input, select, textarea, .glass-card, .glass-surface, .glass-btn, .wax-seal-btn {
+  transition-timing-function: var(--ease-expo);
+  backface-visibility: hidden;
+}
+button, a, [role="button"] { transition-duration: 0.25s; }
 
 /* ── Custom Scrollbar ───────────────────────── */
 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
