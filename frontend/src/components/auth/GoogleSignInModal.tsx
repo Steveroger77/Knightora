@@ -83,14 +83,15 @@ export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({ isOpen, on
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-obsidian-950/80 backdrop-blur-md select-none animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md select-none animate-in fade-in duration-200">
       <div className="relative w-full max-w-[370px]">
         <GlassSurface
           borderRadius={24}
           borderWidth={1}
-          blur={18}
-          opacity={0.95}
-          className="p-6 shadow-2xl border-aurora-500/30 text-white relative"
+          blur={22}
+          opacity={0.4}
+          saturation={1.8}
+          className="p-6 shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_24px_rgba(56,189,248,0.15)] border border-white/20 text-white relative backdrop-blur-2xl"
         >
           {/* Close Button */}
           <button
