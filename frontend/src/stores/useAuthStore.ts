@@ -14,12 +14,14 @@ interface AuthState {
   currentUser: User | null;
   isAuthenticated: boolean;
   rememberMe: boolean;
+  authError: string | null;
   isProfileModalOpen: boolean;
   isUsernameOnboardingOpen: boolean;
   pendingGoogleUser: User | null;
 
   // Actions
   initializeAuth: () => Promise<void>;
+  clearAuthError: () => void;
   loginWithGoogle: (
     rememberMe?: boolean,
     accountDetails?: { email?: string; displayName?: string; avatarUrl?: string }
@@ -114,52 +116,58 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   currentUser: initialSession?.user || null,
   isAuthenticated: !!initialSession?.user,
   rememberMe: initialSession?.rememberMe ?? true,
+  authError: null,
   isProfileModalOpen: false,
   isUsernameOnboardingOpen: false,
   pendingGoogleUser: null,
 
+  clearAuthError: () => set({ authError: null }),
+
   initializeAuth: async () => {
     try {
+      // 1. Detect any OAuth error returned in URL query or hash
+      const urlParams = new URLSearchParams(window.location.search);
+      const hashString = window.location.hash.startsWith('#')
+        ? window.location.hash.substring(1)
+        : window.location.hash;
+      const hashParams = new URLSearchParams(hashString);
+
+      const rawErrorDesc =
+        urlParams.get('error_description') ||
+        hashParams.get('error_description') ||
+        urlParams.get('error') ||
+        hashParams.get('error');
+
+      if (rawErrorDesc) {
+        const decoded = decodeURIComponent(rawErrorDesc).replace(/\+/g, ' ');
+        console.error('[OAuth Redirect Error]:', decoded);
+        set({ authError: decoded });
+      }
+
+      const hasOAuthCallbackParam =
+        urlParams.has('code') ||
+        hashParams.has('access_token') ||
+        urlParams.has('access_token');
+
       if (isSupabaseOnline()) {
-        // 1. Check current Supabase active session (handles OAuth redirect back)
-        const { data } = await supabase.auth.getSession();
-        if (data?.session?.user) {
-          const sbUser = data.session.user;
-          const authUser: User = {
-            id: sbUser.id,
-            email: sbUser.email || '',
-            username: sbUser.user_metadata?.username || `author_${sbUser.id.slice(0, 5)}`,
-            displayName: sbUser.user_metadata?.displayName || sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || 'Google Author',
-            avatarUrl: sbUser.user_metadata?.avatar_url || sbUser.user_metadata?.picture || undefined,
-            createdAt: sbUser.created_at || new Date().toISOString(),
-            authMethod: 'google',
-            isGuest: false,
-            rememberMe: true,
-          };
-          saveRegisteredUser(authUser);
-          saveSession(authUser, true);
-          set({ currentUser: authUser, isAuthenticated: true });
-
-          // Load this specific user's isolated workspace
-          await useProjectStore.getState().loadUserWorkspace(authUser.id);
-
-          // Clean up hash/code query parameters from URL after OAuth redirect
-          if (window.location.hash || window.location.search) {
-            window.history.replaceState(null, '', window.location.pathname);
-          }
-          return;
-        }
-
-        // 2. Listen to Supabase Auth State Changes (Google OAuth & Session Refresh)
+        // Listen to Supabase Auth State Changes (Google OAuth redirect, token refresh, sign-in)
         supabase.auth.onAuthStateChange(async (event, session) => {
           if (session?.user) {
             const sbUser = session.user;
             const authUser: User = {
               id: sbUser.id,
               email: sbUser.email || '',
-              username: sbUser.user_metadata?.username || `author_${sbUser.id.slice(0, 5)}`,
-              displayName: sbUser.user_metadata?.displayName || sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || 'Google Author',
-              avatarUrl: sbUser.user_metadata?.avatar_url || sbUser.user_metadata?.picture || undefined,
+              username:
+                sbUser.user_metadata?.username || `author_${sbUser.id.slice(0, 5)}`,
+              displayName:
+                sbUser.user_metadata?.displayName ||
+                sbUser.user_metadata?.full_name ||
+                sbUser.email?.split('@')[0] ||
+                'Google Author',
+              avatarUrl:
+                sbUser.user_metadata?.avatar_url ||
+                sbUser.user_metadata?.picture ||
+                undefined,
               createdAt: sbUser.created_at || new Date().toISOString(),
               authMethod: 'google',
               isGuest: false,
@@ -167,7 +175,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             };
             saveRegisteredUser(authUser);
             saveSession(authUser, true);
-            set({ currentUser: authUser, isAuthenticated: true });
+            set({ currentUser: authUser, isAuthenticated: true, authError: null });
             await useProjectStore.getState().loadUserWorkspace(authUser.id);
             if (window.location.hash || window.location.search) {
               window.history.replaceState(null, '', window.location.pathname);
@@ -178,9 +186,48 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             set({ currentUser: null, isAuthenticated: false });
           }
         });
+
+        // Check if there is already an active Supabase session
+        const { data } = await supabase.auth.getSession();
+        if (data?.session?.user) {
+          const sbUser = data.session.user;
+          const authUser: User = {
+            id: sbUser.id,
+            email: sbUser.email || '',
+            username:
+              sbUser.user_metadata?.username || `author_${sbUser.id.slice(0, 5)}`,
+            displayName:
+              sbUser.user_metadata?.displayName ||
+              sbUser.user_metadata?.full_name ||
+              sbUser.email?.split('@')[0] ||
+              'Google Author',
+            avatarUrl:
+              sbUser.user_metadata?.avatar_url ||
+              sbUser.user_metadata?.picture ||
+              undefined,
+            createdAt: sbUser.created_at || new Date().toISOString(),
+            authMethod: 'google',
+            isGuest: false,
+            rememberMe: true,
+          };
+          saveRegisteredUser(authUser);
+          saveSession(authUser, true);
+          set({ currentUser: authUser, isAuthenticated: true, authError: null });
+          await useProjectStore.getState().loadUserWorkspace(authUser.id);
+          if (window.location.hash || window.location.search) {
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+          return;
+        }
+
+        // If URL has code or access_token, the OAuth token exchange is in flight;
+        // do not reset workspace to unauthenticated yet — onAuthStateChange will handle it.
+        if (hasOAuthCallbackParam) {
+          return;
+        }
       }
 
-      // Check stored session (only if rememberMe was true in localStorage, or active in sessionStorage)
+      // Check stored local session (only if rememberMe was true in localStorage, or active in sessionStorage)
       const sessionData = getStoredSession();
       if (sessionData && sessionData.user) {
         set({
@@ -188,7 +235,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           isAuthenticated: true,
           rememberMe: sessionData.rememberMe ?? true,
         });
-        // Load this user's workspace
         await useProjectStore.getState().loadUserWorkspace(sessionData.user.id);
       } else {
         // Fresh browser opening: start with clean unauthenticated state
@@ -212,7 +258,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return { success: true, isNewUser: true };
       }
     } catch (err: any) {
-      console.warn('[Supabase OAuth Notice]:', err?.message || err);
+      console.error('[Supabase OAuth Notice]:', err?.message || err);
+      return { success: false, error: err?.message || 'Google sign-in failed. Please check popup permissions or try again.' };
     }
 
     // Require an email address for Google sign in

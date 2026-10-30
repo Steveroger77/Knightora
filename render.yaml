@@ -10,9 +10,9 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_SUPABASE_URL
-        sync: false
+        value: https://eqgqqdgfpwejjgjysaws.supabase.co
       - key: VITE_SUPABASE_ANON_KEY
-        sync: false
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxZ3FxZGdmcHdlampnanlzYXdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU2MDIxMzUsImV4cCI6MjEwMTE3ODEzNX0.qGzHEMdYH1z77YFbdwp6D1XBzQrMGB-OL0U9YnyMJ0M
       - key: VITE_OPENROUTER_API_KEY
         sync: false
       - key: VITE_GEMINI_API_KEY

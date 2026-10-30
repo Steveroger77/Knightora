@@ -7,7 +7,7 @@ import { isSupabaseOnline } from '../../lib/supabase';
 
 
 export const LoginModal: React.FC = () => {
-  const { loginWithGoogle, loginWithEmail, signUpWithEmail, loginAsGuest, resetPassword } = useAuthStore();
+  const { loginWithGoogle, loginWithEmail, signUpWithEmail, loginAsGuest, resetPassword, authError, clearAuthError } = useAuthStore();
 
   const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
   const [identifier, setIdentifier] = useState('');
@@ -21,10 +21,10 @@ export const LoginModal: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-
   const clearState = () => {
     setError(null);
     setSuccessMsg(null);
+    clearAuthError();
   };
 
   const handleGoogleLogin = async () => {
@@ -150,10 +150,10 @@ export const LoginModal: React.FC = () => {
           </div>
 
           {/* Alert Messages */}
-          {error && (
+          {(error || authError) && (
             <div className="mb-3 p-2 rounded-lg bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[11px] flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-              <span className="truncate">{error}</span>
+              <span className="truncate">{error || authError}</span>
             </div>
           )}
 

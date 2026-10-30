@@ -241,67 +241,61 @@ function getInitialWorkspaceState(): ReturnType<typeof createTutorialWorkspace> 
       if (parsed?.user?.id) userId = parsed.user.id;
     }
 
+    const tutorial = createTutorialWorkspace(userId);
     const raw = localStorage.getItem(`knightora_user_workspace_${userId}`);
     if (raw) {
       const data = JSON.parse(raw);
-      const hasProjects = Array.isArray(data.projects) && data.projects.length > 0;
-      const activeProj = hasProjects
-        ? data.projects.find((p: any) => p.id === data.activeProjectId) || data.projects[0]
-        : null;
+      const projects: Project[] = Array.isArray(data.projects) && data.projects.length > 0
+        ? data.projects
+        : [tutorial.activeProject];
 
-      const hasAnyEntities =
-        (Array.isArray(data.characters) && data.characters.length > 0) ||
-        (Array.isArray(data.locations) && data.locations.length > 0) ||
-        (Array.isArray(data.scenes) && data.scenes.length > 0);
+      let savedProjectData = data.savedProjectData || {};
 
-      const isSample = !activeProj || activeProj.title?.includes('The Whispering Manor');
-      const hasFullTutorialData =
-        Array.isArray(data.characters) && data.characters.length >= 4 &&
-        Array.isArray(data.props) && data.props.length >= 4 &&
-        Array.isArray(data.scenes) && data.scenes.length >= 4 &&
-        Array.isArray(data.generatedImages) && data.generatedImages.length >= 4;
-
-      // Only restore custom project if it actually has user-created entities
-      if (hasProjects && !isSample && hasAnyEntities) {
-        return {
-          currentUserId: userId,
-          projects: data.projects,
-          activeProject: activeProj,
-          activeScript: data.activeScript || null,
-          characters: data.characters || [],
-          locations: data.locations || [],
-          props: data.props || [],
-          scenes: data.scenes || [],
-          relationships: data.relationships || [],
-          timelineEvents: data.timelineEvents || [],
-          generatedImages: data.generatedImages || [],
-          consistencyFlags: data.consistencyFlags || [],
-          notes: data.notes || [],
-          savedProjectData: data.savedProjectData || {},
-          isLoading: false,
+      let tutorialProj = projects.find((p) => p.title?.includes('The Whispering Manor')) || tutorial.activeProject;
+      if (!savedProjectData[tutorialProj.id] || !savedProjectData[tutorialProj.id]?.characters?.length) {
+        savedProjectData[tutorialProj.id] = {
+          activeScript: tutorial.activeScript,
+          characters: tutorial.characters,
+          locations: tutorial.locations,
+          props: tutorial.props,
+          scenes: tutorial.scenes,
+          relationships: tutorial.relationships,
+          timelineEvents: tutorial.timelineEvents,
+          generatedImages: tutorial.generatedImages,
+          consistencyFlags: tutorial.consistencyFlags,
+          notes: tutorial.notes,
         };
       }
 
-      // If user has fully populated tutorial data, restore it
-      if (hasProjects && isSample && hasFullTutorialData) {
-        return {
-          currentUserId: userId,
-          projects: data.projects,
-          activeProject: activeProj,
-          activeScript: data.activeScript || null,
-          characters: data.characters || [],
-          locations: data.locations || [],
-          props: data.props || [],
-          scenes: data.scenes || [],
-          relationships: data.relationships || [],
-          timelineEvents: data.timelineEvents || [],
-          generatedImages: data.generatedImages || [],
-          consistencyFlags: data.consistencyFlags || [],
-          notes: data.notes || [],
-          savedProjectData: data.savedProjectData || {},
-          isLoading: false,
-        };
+      let activeProj = projects.find((p) => p.id === data.activeProjectId) || projects[0];
+      const activeData = savedProjectData[activeProj.id] || {};
+      const hasCustomEntities = (activeData.characters?.length || 0) > 0 || (activeData.scenes?.length || 0) > 0;
+
+      // If active project is an empty untitled placeholder, activate sample guide so the user immediately gets learning data
+      if (!hasCustomEntities && activeProj.title?.includes('Untitled') && tutorialProj) {
+        activeProj = tutorialProj;
       }
+
+      const isSample = activeProj.title?.includes('The Whispering Manor');
+      const projData = isSample ? savedProjectData[tutorialProj.id] : (savedProjectData[activeProj.id] || {});
+
+      return {
+        currentUserId: userId,
+        projects: projects.some((p) => p.title?.includes('The Whispering Manor')) ? projects : [tutorialProj, ...projects],
+        activeProject: activeProj,
+        activeScript: projData.activeScript || (isSample ? tutorial.activeScript : null),
+        characters: projData.characters || (isSample ? tutorial.characters : []),
+        locations: projData.locations || (isSample ? tutorial.locations : []),
+        props: projData.props || (isSample ? tutorial.props : []),
+        scenes: projData.scenes || (isSample ? tutorial.scenes : []),
+        relationships: projData.relationships || (isSample ? tutorial.relationships : []),
+        timelineEvents: projData.timelineEvents || (isSample ? tutorial.timelineEvents : []),
+        generatedImages: projData.generatedImages || (isSample ? tutorial.generatedImages : []),
+        consistencyFlags: projData.consistencyFlags || (isSample ? tutorial.consistencyFlags : []),
+        notes: projData.notes || (isSample ? tutorial.notes : []),
+        savedProjectData,
+        isLoading: false,
+      };
     }
 
     // Default: generate fresh tutorial workspace with full mock data for all tabs
@@ -323,70 +317,74 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ isLoading: true, currentUserId: userId });
 
     try {
+      const tutorial = createTutorialWorkspace(userId);
+
       // 1. Try loading user's isolated local workspace
       const raw = localStorage.getItem(getWorkspaceStorageKey(userId));
       if (raw) {
         const data = JSON.parse(raw);
-        const hasProjects = Array.isArray(data.projects) && data.projects.length > 0;
-        const activeProj = hasProjects
-          ? data.projects.find((p: Project) => p.id === data.activeProjectId) || data.projects[0]
-          : null;
+        let projects: Project[] = Array.isArray(data.projects) && data.projects.length > 0
+          ? data.projects
+          : [tutorial.activeProject];
 
-        const hasAnyEntities =
-          (Array.isArray(data.characters) && data.characters.length > 0) ||
-          (Array.isArray(data.locations) && data.locations.length > 0) ||
-          (Array.isArray(data.scenes) && data.scenes.length > 0);
+        let savedProjectData = data.savedProjectData || {};
 
-        const isSampleProject = !activeProj || activeProj.title?.includes('The Whispering Manor');
-        const hasFullTutorialData =
-          Array.isArray(data.characters) && data.characters.length >= 4 &&
-          Array.isArray(data.props) && data.props.length >= 4 &&
-          Array.isArray(data.scenes) && data.scenes.length >= 4 &&
-          Array.isArray(data.generatedImages) && data.generatedImages.length >= 4;
-
-        // If user has a real custom project with actual user-created entities, restore it
-        if (hasProjects && !isSampleProject && hasAnyEntities) {
-          set({
-            currentUserId: userId,
-            projects: data.projects,
-            activeProject: activeProj,
-            activeScript: data.activeScript || null,
-            characters: data.characters || [],
-            locations: data.locations || [],
-            props: data.props || [],
-            scenes: data.scenes || [],
-            relationships: data.relationships || [],
-            timelineEvents: data.timelineEvents || [],
-            generatedImages: data.generatedImages || [],
-            consistencyFlags: data.consistencyFlags || [],
-            notes: data.notes || [],
-            savedProjectData: data.savedProjectData || {},
-            isLoading: false,
-          });
-          return;
+        // Ensure tutorial project exists and has full mock data
+        let tutorialProj = projects.find((p) => p.title?.includes('The Whispering Manor'));
+        if (!tutorialProj) {
+          tutorialProj = tutorial.activeProject;
+          projects = [tutorialProj, ...projects];
         }
 
-        // If user has fully populated tutorial data, restore it
-        if (hasProjects && isSampleProject && hasFullTutorialData) {
-          set({
-            currentUserId: userId,
-            projects: data.projects,
-            activeProject: activeProj,
-            activeScript: data.activeScript || null,
-            characters: data.characters || [],
-            locations: data.locations || [],
-            props: data.props || [],
-            scenes: data.scenes || [],
-            relationships: data.relationships || [],
-            timelineEvents: data.timelineEvents || [],
-            generatedImages: data.generatedImages || [],
-            consistencyFlags: data.consistencyFlags || [],
-            notes: data.notes || [],
-            savedProjectData: data.savedProjectData || {},
-            isLoading: false,
-          });
-          return;
+        if (!savedProjectData[tutorialProj.id] || !savedProjectData[tutorialProj.id]?.characters?.length) {
+          savedProjectData[tutorialProj.id] = {
+            activeScript: tutorial.activeScript,
+            characters: tutorial.characters,
+            locations: tutorial.locations,
+            props: tutorial.props,
+            scenes: tutorial.scenes,
+            relationships: tutorial.relationships,
+            timelineEvents: tutorial.timelineEvents,
+            generatedImages: tutorial.generatedImages,
+            consistencyFlags: tutorial.consistencyFlags,
+            notes: tutorial.notes,
+          };
         }
+
+        // Determine active project
+        let activeProj = projects.find((p: Project) => p.id === data.activeProjectId) || projects[0];
+        const activeData = savedProjectData[activeProj.id] || {};
+        const hasEntities = (activeData.characters?.length || 0) > 0 || (activeData.scenes?.length || 0) > 0;
+
+        // If the active project is an empty placeholder, default to tutorial guide so user sees learning mock data
+        if (!hasEntities && activeProj.title?.includes('Untitled') && tutorialProj) {
+          activeProj = tutorialProj;
+        }
+
+        const isSample = activeProj.title?.includes('The Whispering Manor');
+        const projData = isSample ? savedProjectData[tutorialProj.id] : (savedProjectData[activeProj.id] || {});
+
+        const nextState = {
+          currentUserId: userId,
+          projects,
+          activeProject: activeProj,
+          activeScript: projData.activeScript || (isSample ? tutorial.activeScript : null),
+          characters: projData.characters || (isSample ? tutorial.characters : []),
+          locations: projData.locations || (isSample ? tutorial.locations : []),
+          props: projData.props || (isSample ? tutorial.props : []),
+          scenes: projData.scenes || (isSample ? tutorial.scenes : []),
+          relationships: projData.relationships || (isSample ? tutorial.relationships : []),
+          timelineEvents: projData.timelineEvents || (isSample ? tutorial.timelineEvents : []),
+          generatedImages: projData.generatedImages || (isSample ? tutorial.generatedImages : []),
+          consistencyFlags: projData.consistencyFlags || (isSample ? tutorial.consistencyFlags : []),
+          notes: projData.notes || (isSample ? tutorial.notes : []),
+          savedProjectData,
+          isLoading: false,
+        };
+
+        set(nextState);
+        saveUserWorkspaceToStorage(userId, nextState);
+        return;
       }
 
       // 2. Check Supabase cloud projects if online
@@ -395,9 +393,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         (cp: any) => cp.title && !cp.title.includes('The Whispering Manor')
       );
 
-      // If user has custom saved projects on cloud (not the sample guide)
+      // If user has custom saved projects on cloud
       if (customCloudProjects && customCloudProjects.length > 0) {
-        const tutorial = createTutorialWorkspace(userId);
         const formattedProjects: Project[] = customCloudProjects.map((cp: any) => ({
           id: cp.id,
           userId: cp.user_id,
@@ -408,10 +405,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           updatedAt: cp.updated_at,
         }));
 
+        const allProjects = [...formattedProjects, tutorial.activeProject];
         const activeP = formattedProjects[0];
-        set({
+
+        const nextState = {
           currentUserId: userId,
-          projects: [...formattedProjects, tutorial.activeProject],
+          projects: allProjects,
           activeProject: activeP,
           activeScript: null,
           characters: [],
@@ -425,8 +424,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           notes: [],
           savedProjectData: tutorial.savedProjectData,
           isLoading: false,
-        });
-        saveUserWorkspaceToStorage(userId, get());
+        };
+
+        set(nextState);
+        saveUserWorkspaceToStorage(userId, nextState);
         return;
       }
 
@@ -449,7 +450,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const tutorial = createTutorialWorkspace(userId);
     const existingProjects = get().projects.filter((p) => !p.title.includes('The Whispering Manor'));
     
-    set({
+    const nextSavedData = {
+      ...get().savedProjectData,
+      ...tutorial.savedProjectData,
+    };
+
+    const nextState = {
       projects: [tutorial.activeProject, ...existingProjects],
       activeProject: tutorial.activeProject,
       activeScript: tutorial.activeScript,
@@ -462,13 +468,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       generatedImages: tutorial.generatedImages,
       consistencyFlags: tutorial.consistencyFlags,
       notes: tutorial.notes,
-      savedProjectData: {
-        ...get().savedProjectData,
-        ...tutorial.savedProjectData,
-      },
-    });
+      savedProjectData: nextSavedData,
+    };
 
-    saveUserWorkspaceToStorage(userId, get());
+    set(nextState);
+    saveUserWorkspaceToStorage(userId, { ...get(), ...nextState });
+    saveProjectSupabase(tutorial.activeProject);
   },
 
   clearWorkspace: () => {
@@ -498,7 +503,25 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         };
       }
 
-      const savedData = updatedSavedData[project.id];
+      let savedData = updatedSavedData[project.id];
+      const isSampleGuide = project.title?.includes('The Whispering Manor');
+      if (isSampleGuide && (!savedData || !savedData.characters?.length || !savedData.scenes?.length)) {
+        const tutorial = createTutorialWorkspace(state.currentUserId || 'guest');
+        savedData = {
+          activeScript: tutorial.activeScript,
+          characters: tutorial.characters,
+          locations: tutorial.locations,
+          props: tutorial.props,
+          scenes: tutorial.scenes,
+          relationships: tutorial.relationships,
+          timelineEvents: tutorial.timelineEvents,
+          generatedImages: tutorial.generatedImages,
+          consistencyFlags: tutorial.consistencyFlags,
+          notes: tutorial.notes,
+        };
+        updatedSavedData[project.id] = savedData;
+      }
+
       const nextState = savedData
         ? { activeProject: project, savedProjectData: updatedSavedData, ...savedData }
         : {
@@ -1177,7 +1200,24 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
 
       const next = remaining[0];
-      const savedData = restSaved[next.id];
+      let savedData = restSaved[next.id];
+      if (next.title?.includes('The Whispering Manor') && (!savedData || !savedData.characters?.length)) {
+        const tutorial = createTutorialWorkspace(state.currentUserId || 'guest');
+        savedData = {
+          activeScript: tutorial.activeScript,
+          characters: tutorial.characters,
+          locations: tutorial.locations,
+          props: tutorial.props,
+          scenes: tutorial.scenes,
+          relationships: tutorial.relationships,
+          timelineEvents: tutorial.timelineEvents,
+          generatedImages: tutorial.generatedImages,
+          consistencyFlags: tutorial.consistencyFlags,
+          notes: tutorial.notes,
+        };
+        restSaved[next.id] = savedData;
+      }
+
       const nextState = savedData
         ? { projects: remaining, activeProject: next, savedProjectData: restSaved, ...savedData }
         : {

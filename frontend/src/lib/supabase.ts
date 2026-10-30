@@ -1,8 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
+const DEFAULT_SUPABASE_URL = 'https://eqgqqdgfpwejjgjysaws.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxZ3FxZGdmcHdlampnanlzYXdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU2MDIxMzUsImV4cCI6MjEwMTE3ODEzNX0.qGzHEMdYH1z77YFbdwp6D1XBzQrMGB-OL0U9YnyMJ0M';
+
 export function isSupabaseOnline(): boolean {
-  const sbUrl = import.meta.env.VITE_SUPABASE_URL || '';
-  const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  const envUrl = import.meta.env.VITE_SUPABASE_URL;
+  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const sbUrl = (envUrl && !envUrl.includes('placeholder')) ? envUrl : DEFAULT_SUPABASE_URL;
+  const sbKey = (envKey && !envKey.includes('placeholder')) ? envKey : DEFAULT_SUPABASE_ANON_KEY;
   return Boolean(
     sbUrl &&
     sbKey &&
@@ -15,15 +21,17 @@ export function isSupabaseOnline(): boolean {
   );
 }
 
-const online = isSupabaseOnline();
-const supabaseUrl = online ? (import.meta.env.VITE_SUPABASE_URL as string) : 'https://placeholder.supabase.co';
-const supabaseAnonKey = online ? (import.meta.env.VITE_SUPABASE_ANON_KEY as string) : 'placeholder-anon-key';
+const envUrl = import.meta.env.VITE_SUPABASE_URL;
+const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = (envUrl && !envUrl.includes('placeholder')) ? envUrl : DEFAULT_SUPABASE_URL;
+const supabaseAnonKey = (envKey && !envKey.includes('placeholder')) ? envKey : DEFAULT_SUPABASE_ANON_KEY;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    persistSession: online,
-    autoRefreshToken: online,
-    detectSessionInUrl: online,
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    flowType: 'pkce',
   },
 });
 
